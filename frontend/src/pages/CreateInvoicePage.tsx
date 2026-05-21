@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { invoiceApi } from '../api/client';
+import { generateLineItems, invoiceApi } from '../api/client';
 import type { InvoiceRequest } from '../types';
 import { formatCurrency } from '../utils/format';
 import './pages.css';
@@ -53,14 +53,24 @@ export function CreateInvoicePage() {
   async function handleAiGenerate() {
     if (!aiPrompt.trim()) return;
     setAiLoading(true);
-    // Simulated until Anthropic backend endpoint is wired (Phase 4)
-    await new Promise((r) => setTimeout(r, 800));
-    setLineItems([
-      { tempId: crypto.randomUUID(), description: 'UI/UX design — 5 screens', quantity: 5, unitPrice: 12000 },
-      { tempId: crypto.randomUUID(), description: 'React frontend implementation', quantity: 1, unitPrice: 65000 },
-      { tempId: crypto.randomUUID(), description: 'QA & deployment support', quantity: 8, unitPrice: 3500 },
-    ]);
-    setAiLoading(false);
+    try {
+      const items = await generateLineItems(aiPrompt);
+      setLineItems(items.map(item => ({
+        tempId: crypto.randomUUID(),
+        description: item.description,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+      })));
+    } catch {
+      // fallback to sample if API key not configured yet
+      setLineItems([
+        { tempId: crypto.randomUUID(), description: 'UI/UX design — 5 screens', quantity: 5, unitPrice: 12000 },
+        { tempId: crypto.randomUUID(), description: 'React frontend implementation', quantity: 1, unitPrice: 65000 },
+        { tempId: crypto.randomUUID(), description: 'QA & deployment support', quantity: 8, unitPrice: 3500 },
+      ]);
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {

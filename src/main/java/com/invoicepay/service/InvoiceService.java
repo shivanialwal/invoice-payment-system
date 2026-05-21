@@ -6,9 +6,12 @@ import com.invoicepay.dto.LineItemDTO;
 import com.invoicepay.enums.InvoiceStatus;
 import com.invoicepay.model.Invoice;
 import com.invoicepay.model.LineItem;
+import com.invoicepay.model.User;
 import com.invoicepay.repository.InvoiceRepository;
+import com.invoicepay.repository.UserRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,13 +26,16 @@ import java.util.stream.Collectors;
 public class InvoiceService {
 
     private final InvoiceRepository invoiceRepository;
+    private final UserRepository userRepository;
 
     // ── CREATE ──────────────────────────────────────────────────────────────
 
     @Transactional
     public InvoiceResponse createInvoice(InvoiceRequest request) {
+        User currentUser = getCurrentUser();
+
         Invoice invoice = Invoice.builder()
-                .invoiceNumber(generateInvoiceNumber())
+                .invoiceNumber(generateInvoiceNumber(currentUser))
                 .clientName(request.getClientName())
                 .clientEmail(request.getClientEmail())
                 .clientPhone(request.getClientPhone())
@@ -39,26 +45,12 @@ public class InvoiceService {
                 .status(request.getStatus() != null ? request.getStatus() : InvoiceStatus.PENDING)
                 .notes(request.getNotes())
                 .paidAmount(BigDecimal.ZERO)
+                .user(currentUser)
                 .build();
 
-        // Build line items and calculate total
-        List<LineItem> lineItems = request.getLineItems().stream().map(dto -> {
-            BigDecimal amount = dto.getUnitPrice().multiply(BigDecimal.valueOf(dto.getQuantity()));
-            return LineItem.builder()
-                    .invoice(invoice)
-                    .description(dto.getDescription())
-                    .quantity(dto.getQuantity())
-                    .unitPrice(dto.getUnitPrice())
-                    .amount(amount)
-                    .build();
-        }).collect(Collectors.toList());
-
-        BigDecimal total = lineItems.stream()
-                .map(LineItem::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
+        List<LineItem> lineItems = buildLineItems(request, invoice);
         invoice.setLineItems(lineItems);
-        invoice.setTotalAmount(total);
+        invoice.setTotalAmount(sumAmount(lineItems));
 
         return toResponse(invoiceRepository.save(invoice));
     }
@@ -67,9 +59,8 @@ public class InvoiceService {
 
     @Transactional(readOnly = true)
     public List<InvoiceResponse> getAllInvoices() {
-        return invoiceRepository.findAll().stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+        return invoiceRepository.findByUser(getCurrentUser()).stream()
+                .map(this::toResponse).collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
@@ -79,9 +70,8 @@ public class InvoiceService {
 
     @Transactional(readOnly = true)
     public List<InvoiceResponse> getInvoicesByStatus(InvoiceStatus status) {
-        return invoiceRepository.findByStatus(status).stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList());
+        return invoiceRepository.findByUserAndStatus(getCurrentUser(), status).stream()
+                .map(this::toResponse).collect(Collectors.toList());
     }
 
     // ── UPDATE ───────────────────────────────────────────────────────────────
@@ -97,14 +87,45 @@ public class InvoiceService {
         invoice.setIssueDate(request.getIssueDate());
         invoice.setDueDate(request.getDueDate());
         invoice.setNotes(request.getNotes());
+        if (request.getStatus() != null) invoice.setStatus(request.getStatus());
 
-        if (request.getStatus() != null) {
-            invoice.setStatus(request.getStatus());
-        }
-
-        // Replace line items
         invoice.getLineItems().clear();
-        List<LineItem> lineItems = request.getLineItems().stream().map(dto -> {
+        List<LineItem> lineItems = buildLineItems(request, invoice);
+        invoice.getLineItems().addAll(lineItems);
+        invoice.setTotalAmount(sumAmount(lineItems));
+
+        return toResponse(invoiceRepository.save(invoice));
+    }
+
+    // ── DELETE ───────────────────────────────────────────────────────────────
+
+    @Transactional
+    public void deleteInvoice(Long id) {
+        Invoice invoice = findOrThrow(id);
+        invoiceRepository.delete(invoice);
+    }
+
+    // ── HELPERS ──────────────────────────────────────────────────────────────
+
+    private User getCurrentUser() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new EntityNotFoundException("User not found"));
+    }
+
+    private Invoice findOrThrow(Long id) {
+        return invoiceRepository.findByIdAndUser(id, getCurrentUser())
+                .orElseThrow(() -> new EntityNotFoundException("Invoice not found with id: " + id));
+    }
+
+    private String generateInvoiceNumber(User user) {
+        String prefix = "INV-" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM")) + "-";
+        long count = invoiceRepository.countByUser(user) + 1;
+        return prefix + String.format("%04d", count);
+    }
+
+    private List<LineItem> buildLineItems(InvoiceRequest request, Invoice invoice) {
+        return request.getLineItems().stream().map(dto -> {
             BigDecimal amount = dto.getUnitPrice().multiply(BigDecimal.valueOf(dto.getQuantity()));
             return LineItem.builder()
                     .invoice(invoice)
@@ -114,38 +135,10 @@ public class InvoiceService {
                     .amount(amount)
                     .build();
         }).collect(Collectors.toList());
-
-        BigDecimal total = lineItems.stream()
-                .map(LineItem::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        invoice.getLineItems().addAll(lineItems);
-        invoice.setTotalAmount(total);
-
-        return toResponse(invoiceRepository.save(invoice));
     }
 
-    // ── DELETE ───────────────────────────────────────────────────────────────
-
-    @Transactional
-    public void deleteInvoice(Long id) {
-        if (!invoiceRepository.existsById(id)) {
-            throw new EntityNotFoundException("Invoice not found with id: " + id);
-        }
-        invoiceRepository.deleteById(id);
-    }
-
-    // ── HELPERS ──────────────────────────────────────────────────────────────
-
-    private Invoice findOrThrow(Long id) {
-        return invoiceRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Invoice not found with id: " + id));
-    }
-
-    private String generateInvoiceNumber() {
-        String prefix = "INV-" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM")) + "-";
-        long count = invoiceRepository.count() + 1;
-        return prefix + String.format("%04d", count);
+    private BigDecimal sumAmount(List<LineItem> items) {
+        return items.stream().map(LineItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private InvoiceResponse toResponse(Invoice invoice) {
