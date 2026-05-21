@@ -1,4 +1,5 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import './Layout.css';
 
 const nav = [
@@ -8,6 +9,14 @@ const nav = [
 ];
 
 export function Layout() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  function handleLogout() {
+    logout();
+    navigate('/login');
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -31,8 +40,15 @@ export function Layout() {
           ))}
         </nav>
         <div className="sidebar-footer">
-          <span className="mock-badge">Mock data</span>
-          <p>Backend API at <code>/api</code> when Spring Boot is running.</p>
+          {user && (
+            <div style={{ marginBottom: '0.75rem' }}>
+              <p style={{ margin: 0, fontWeight: 600, fontSize: '0.85rem' }}>{user.name}</p>
+              <p style={{ margin: '0.1rem 0 0.5rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>{user.email}</p>
+              <button onClick={handleLogout} className="btn btn-secondary" style={{ width: '100%', fontSize: '0.8rem', padding: '0.4rem' }}>
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
       </aside>
       <main className="main">
