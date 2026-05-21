@@ -1,0 +1,24 @@
+.status-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.status-paid {
+  background: var(--paid-bg);
+  color: var(--paid);
+}
+
+.status-pending {
+  background: var(--pending-bg);
+  color: var(--pending);
+}
+
+.status-overdue {
+  background: var(--overdue-bg);
+  color: var(--overdue);
+}
