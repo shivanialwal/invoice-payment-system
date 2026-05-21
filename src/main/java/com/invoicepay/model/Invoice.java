@@ -59,6 +59,11 @@ public class Invoice {
 
     private String notes;
 
+    // Payment
+    private String razorpayOrderId;
+    private String razorpayPaymentId;
+    private String upiLink;
+
     // Owner
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)

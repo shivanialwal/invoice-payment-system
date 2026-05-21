@@ -70,6 +70,51 @@ export const invoiceApi = {
   update: (id: number, data: InvoiceRequest) =>
     request<Invoice>(`/invoices/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: number) => request<void>(`/invoices/${id}`, { method: 'DELETE' }),
+
+  send: (id: number) =>
+    request<{ message: string }>(`/invoices/${id}/send`, { method: 'POST' }),
+
+  remind: (id: number) =>
+    request<{ message: string }>(`/invoices/${id}/remind`, { method: 'POST' }),
+};
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+export interface DashboardStats {
+  totalRevenue: number;
+  totalInvoices: number;
+  paidCount: number;
+  pendingCount: number;
+  overdueCount: number;
+  draftCount: number;
+}
+
+export const dashboardApi = {
+  getStats: () => request<DashboardStats>('/dashboard/stats'),
+};
+
+// ── Payments ──────────────────────────────────────────────────────────────────
+
+export interface PaymentOrder {
+  orderId: string;
+  amount: number;
+  currency: string;
+  razorpayKeyId: string;
+  upiLink: string;
+}
+
+export const paymentApi = {
+  createOrder: (invoiceId: number) =>
+    request<PaymentOrder>(`/payments/order/${invoiceId}`, { method: 'POST' }),
+
+  verify: (invoiceId: number, data: {
+    razorpayOrderId: string;
+    razorpayPaymentId: string;
+    razorpaySignature: string;
+  }) => request<{ message: string }>(`/payments/verify/${invoiceId}`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
 };
 
 // ── AI ────────────────────────────────────────────────────────────────────────
