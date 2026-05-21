@@ -1,16 +1,46 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { invoiceApi } from '../api/client';
 import { InvoiceTable } from '../components/InvoiceTable';
 import { StatCard } from '../components/StatCard';
-import { computeDashboardStats, mockInvoices } from '../data/mockInvoices';
+import type { DashboardStats, Invoice } from '../types';
 import { formatCurrency } from '../utils/format';
 import './pages.css';
 
-const stats = computeDashboardStats(mockInvoices);
-const recent = [...mockInvoices].sort(
-  (a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime(),
-).slice(0, 4);
+function computeStats(invoices: Invoice[]): DashboardStats {
+  return invoices.reduce(
+    (acc, inv) => {
+      if (inv.status === 'PAID') {
+        acc.paidCount++;
+        acc.totalRevenue += inv.totalAmount;
+      } else if (inv.status === 'PENDING') {
+        acc.pendingCount++;
+      } else if (inv.status === 'OVERDUE') {
+        acc.overdueCount++;
+      }
+      return acc;
+    },
+    { totalRevenue: 0, paidCount: 0, pendingCount: 0, overdueCount: 0 } as DashboardStats,
+  );
+}
 
 export function DashboardPage() {
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    invoiceApi.getAll()
+      .then(setInvoices)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const stats = computeStats(invoices);
+  const recent = [...invoices]
+    .sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime())
+    .slice(0, 5);
+
   return (
     <>
       <header className="page-header">
@@ -30,21 +60,13 @@ export function DashboardPage() {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h2 className="section-title" style={{ margin: 0 }}>
-          Recent invoices
-        </h2>
-        <Link to="/invoices/new" className="btn btn-primary">
-          + New invoice
-        </Link>
+        <h2 className="section-title" style={{ margin: 0 }}>Recent invoices</h2>
+        <Link to="/invoices/new" className="btn btn-primary">+ New invoice</Link>
       </div>
 
-      <InvoiceTable invoices={recent} />
-
-      <div className="alert alert-info" style={{ marginTop: '1.5rem' }}>
-        <strong>How this maps to the backend:</strong> Dashboard stats will come from{' '}
-        <code className="mono">GET /api/invoices/stats</code>. Payment reminders and Razorpay/UPI
-        webhooks will update status in real time once Spring Boot endpoints exist.
-      </div>
+      {loading && <p style={{ color: 'var(--text-muted)' }}>Loading…</p>}
+      {error && <div className="alert alert-warn">Could not load invoices: {error}</div>}
+      {!loading && !error && <InvoiceTable invoices={recent} />}
     </>
   );
 }

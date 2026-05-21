@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { lineItemsTotal } from '../data/mockInvoices';
 import type { Invoice } from '../types';
 import { formatCurrency, formatDate } from '../utils/format';
 import { StatusBadge } from './StatusBadge';
@@ -30,7 +29,7 @@ export function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
                 <span className="client-email">{inv.clientEmail}</span>
               </td>
               <td>{formatDate(inv.dueDate)}</td>
-              <td className="amount">{formatCurrency(lineItemsTotal(inv.lineItems))}</td>
+              <td className="amount">{formatCurrency(inv.totalAmount)}</td>
               <td>
                 <StatusBadge status={inv.status} />
               </td>

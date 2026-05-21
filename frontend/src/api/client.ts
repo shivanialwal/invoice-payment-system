@@ -1,31 +1,52 @@
-/**
- * API client — talks to Spring Boot at /api (proxied in dev).
- * Until the backend is ready, pages use mock data from src/data/.
- */
+import type { Invoice, InvoiceRequest, InvoiceStatus } from '../types';
 
 const BASE = '/api';
 
-export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
-  if (!res.ok) {
-    throw new Error(`API ${res.status}: ${res.statusText}`);
-  }
-  return res.json() as Promise<T>;
-}
-
-export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    ...options,
   });
   if (!res.ok) {
     throw new Error(`API ${res.status}: ${res.statusText}`);
   }
+  // 204 No Content (DELETE) has no body
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
-/** Placeholder for AI line-item generation (Anthropic via backend). */
-export async function generateLineItems(prompt: string): Promise<{ description: string; quantity: number; unitPrice: number }[]> {
-  return apiPost('/invoices/ai/line-items', { prompt });
+// ── Invoices ──────────────────────────────────────────────────────────────────
+
+export const invoiceApi = {
+  getAll: (status?: InvoiceStatus) => {
+    const query = status ? `?status=${status}` : '';
+    return request<Invoice[]>(`/invoices${query}`);
+  },
+
+  getById: (id: number) =>
+    request<Invoice>(`/invoices/${id}`),
+
+  create: (data: InvoiceRequest) =>
+    request<Invoice>('/invoices', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  update: (id: number, data: InvoiceRequest) =>
+    request<Invoice>(`/invoices/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  delete: (id: number) =>
+    request<void>(`/invoices/${id}`, { method: 'DELETE' }),
+};
+
+// ── AI line items (Anthropic via backend) ─────────────────────────────────────
+
+export async function generateLineItems(prompt: string) {
+  return request<{ description: string; quantity: number; unitPrice: number }[]>(
+    '/invoices/ai/line-items',
+    { method: 'POST', body: JSON.stringify({ prompt }) },
+  );
 }
